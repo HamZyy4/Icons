@@ -1,264 +1,348 @@
--- This is a new version
+-- ForktUI Icons v2
+-- Icon packs remain independently maintained in their own folders.
 
-local cloneref = (cloneref or clonereference or function(instance)
-	return instance
-end)
+local RAW_BASE = "https://raw.githubusercontent.com/HamZyy4/Icons/refs/heads/main/"
 
-local RunService = cloneref(game:GetService("RunService"))
-local HttpService = cloneref(game:GetService("HttpService"))
-local ReplicatedStorage = cloneref(game:GetService("ReplicatedStorage"))
-
-local function IsExploit()
-	return request and true or false
+local function isExecutor()
+	return type(request) == "function"
+		or type(request) == "table"
+		or type(http_request) == "function"
+		or (type(syn) == "table" and type(syn.request) == "function")
 end
 
-local function Get(url)
-	if IsExploit() then
+local function getSource(url)
+	local requestFn = type(request) == "function" and request
+		or type(http_request) == "function" and http_request
+		or (type(syn) == "table" and type(syn.request) == "function" and syn.request)
+
+	if requestFn then
+		local success, response = pcall(requestFn, { Url = url, Method = "GET" })
+		if success and type(response) == "table" and type(response.Body) == "string" then
+			return response.Body
+		end
+	end
+
+	local success, result = pcall(function()
 		return game:HttpGet(url)
-	else
-		local Success, Result = pcall(function()
-			return HttpService:GetAsync(url)
-		end)
-		if Success then
-			return Result
-		else
-			return ReplicatedStorage:WaitForChild("Request", 9999):InvokeServer({ Url = url })
-		end
+	end)
+	if success and type(result) == "string" then
+		return result
 	end
+
+	warn("[ForktUI Icons] HTTP request failed:", result)
+	return nil
 end
 
-local function Loadstring(src)
-	if not IsExploit() and ReplicatedStorage:WaitForChild("Loadstring", 9999) then
-		return function()
-			return ReplicatedStorage:WaitForChild("Loadstring", 9999):InvokeServer(src)
-		end
-	else
-		return loadstring(src)
+local function executeSource(source)
+	if type(source) ~= "string" or type(loadstring) ~= "function" then
+		return nil
 	end
+
+	local chunk, compileError = loadstring(source)
+	if not chunk then
+		error(compileError or "Icon pack compilation failed")
+	end
+	return chunk()
+end
+
+local function loadRemotePack(packName)
+	local source = getSource(RAW_BASE .. packName .. "/dist/Icons.lua")
+	if not source then
+		return nil
+	end
+
+	local success, result = pcall(executeSource, source)
+	if success and type(result) == "table" then
+		return result
+	end
+	if not success then
+		warn("[ForktUI Icons] Could not load '" .. packName .. "':", result)
+	end
+	return nil
+end
+
+local function loadPack(packName, localLoader)
+	if isExecutor() then
+		local remotePack = loadRemotePack(packName)
+		if remotePack then
+			return remotePack
+		end
+	end
+
+	-- Keep literal module paths so Rojo/DarkLua can resolve the existing pack folders.
+	local success, result = pcall(localLoader)
+	if success and type(result) == "table" then
+		return result
+	end
+
+	warn("[ForktUI Icons] Pack '" .. packName .. "' is unavailable:", result)
+	return { Icons = {}, Spritesheets = {} }
 end
 
 local IconModule = {
 	IconsType = "lucide",
-
 	New = nil,
 	IconThemeTag = nil,
-
-	Icons = {
-		lucide = IsExploit() and Loadstring(
-			Get("https://raw.githubusercontent.com/Footagesus/Icons/refs/heads/main/lucide/dist/Icons.lua")
-		)() or require("./lucide/dist/Icons"),
-		solar = IsExploit() and Loadstring(
-			Get("https://raw.githubusercontent.com/Footagesus/Icons/refs/heads/main/solar/dist/Icons.lua")
-		)() or require("./solar/dist/Icons"),
-		craft = IsExploit() and Loadstring(
-			Get("https://raw.githubusercontent.com/Footagesus/Icons/refs/heads/main/craft/dist/Icons.lua")
-		)() or require("./craft/dist/Icons"),
-		geist = IsExploit() and Loadstring(
-			Get("https://raw.githubusercontent.com/Footagesus/Icons/refs/heads/main/geist/dist/Icons.lua")
-		)() or require("./geist/dist/Icons"),
-		sfsymbols = IsExploit() and Loadstring(
-			Get("https://raw.githubusercontent.com/Footagesus/Icons/refs/heads/main/sfsymbols/dist/Icons.lua")
-		)() or require("./sfsymbols/dist/Icons"),
-		gravity = IsExploit() and Loadstring(
-			Get("https://raw.githubusercontent.com/Footagesus/Icons/refs/heads/main/gravity/dist/Icons.lua")
-		)() or require("./gravity/dist/Icons"),
-	},
+	Icons = {},
 }
 
-local function parseIconString(iconString)
-	if type(iconString) == "string" then
-		local splitIndex = iconString:find(":")
-		if splitIndex then
-			local iconType = iconString:sub(1, splitIndex - 1)
-			local iconName = iconString:sub(splitIndex + 1)
-			return iconType, iconName
-		end
+-- Load only the family that is actually requested. This avoids six HTTP fetches
+-- when an executor starts but the project only uses one icon family.
+local PACK_LOADERS = {
+	lucide = function() return require("./lucide/dist/Icons") end,
+	solar = function() return require("./solar/dist/Icons") end,
+	craft = function() return require("./craft/dist/Icons") end,
+	geist = function() return require("./geist/dist/Icons") end,
+	sfsymbols = function() return require("./sfsymbols/dist/Icons") end,
+	gravity = function() return require("./gravity/dist/Icons") end,
+}
+
+local function getPack(packName)
+	local pack = IconModule.Icons[packName]
+	if type(pack) == "table" then
+		return pack
 	end
+
+	local loader = PACK_LOADERS[packName]
+	if not loader then
+		return nil
+	end
+
+	pack = loadPack(packName, loader)
+	IconModule.Icons[packName] = pack
+	return pack
+end
+
+local function parseIconString(iconString)
+	if type(iconString) ~= "string" then
+		return nil, nil
+	end
+
+	local splitIndex = iconString:find(":", 1, true)
+	if splitIndex then
+		return iconString:sub(1, splitIndex - 1), iconString:sub(splitIndex + 1)
+	end
+
 	return nil, iconString
 end
 
+local function normalizeImageId(imageId)
+	if type(imageId) == "number" then
+		return "rbxassetid://" .. tostring(imageId)
+	end
+	return imageId
+end
+
 function IconModule.AddIcons(packName, iconsData)
-	if type(packName) ~= "string" or type(iconsData) ~= "table" then
-		error("AddIcons: packName must be string, iconsData must be table")
-		return
+	if type(packName) ~= "string" or packName == "" then
+		error("AddIcons: packName must be a non-empty string", 2)
+	end
+	if type(iconsData) ~= "table" then
+		error("AddIcons: iconsData must be a table", 2)
 	end
 
-	if not IconModule.Icons[packName] then
-		IconModule.Icons[packName] = {
-			Icons = {},
-			Spritesheets = {},
-		}
+	local pack = getPack(packName)
+	if type(pack) ~= "table" or type(pack.Icons) ~= "table" then
+		pack = { Icons = {}, Spritesheets = {} }
+		IconModule.Icons[packName] = pack
 	end
+	pack.Spritesheets = type(pack.Spritesheets) == "table" and pack.Spritesheets or {}
 
 	for iconName, iconValue in pairs(iconsData) do
-		if type(iconValue) == "number" or (type(iconValue) == "string" and iconValue:match("^rbxassetid://")) then
-			local imageId = iconValue
-			if type(iconValue) == "number" then
-				imageId = "rbxassetid://" .. tostring(iconValue)
-			end
-
-			IconModule.Icons[packName].Icons[iconName] = {
+		if type(iconName) ~= "string" or iconName == "" then
+			warn("AddIcons: skipped an icon with an invalid name")
+		elseif type(iconValue) == "number" or (type(iconValue) == "string" and iconValue:match("^rbxassetid://")) then
+			local imageId = normalizeImageId(iconValue)
+			pack.Icons[iconName] = {
 				Image = imageId,
 				ImageRectSize = Vector2.new(0, 0),
 				ImageRectPosition = Vector2.new(0, 0),
 				Parts = nil,
 			}
-			IconModule.Icons[packName].Spritesheets[imageId] = imageId
+			pack.Spritesheets[imageId] = imageId
 		elseif type(iconValue) == "table" then
-			if iconValue.Image and iconValue.ImageRectSize and iconValue.ImageRectPosition then
-				local imageId = iconValue.Image
-				if type(imageId) == "number" then
-					imageId = "rbxassetid://" .. tostring(imageId)
-				end
-
-				IconModule.Icons[packName].Icons[iconName] = {
+			local imageId = normalizeImageId(iconValue.Image)
+			if imageId and iconValue.ImageRectSize and iconValue.ImageRectPosition then
+				pack.Icons[iconName] = {
 					Image = imageId,
 					ImageRectSize = iconValue.ImageRectSize,
 					ImageRectPosition = iconValue.ImageRectPosition,
 					Parts = iconValue.Parts,
 				}
-
-				if not IconModule.Icons[packName].Spritesheets[imageId] then
-					IconModule.Icons[packName].Spritesheets[imageId] = imageId
-				end
+				pack.Spritesheets[imageId] = imageId
 			else
-				warn("AddIcons: Invalid spritesheet data format for icon '" .. iconName .. "'")
+				warn("AddIcons: invalid spritesheet data for icon '" .. iconName .. "'")
 			end
 		else
-			warn("AddIcons: Unsupported data type for icon '" .. iconName .. "': " .. type(iconValue))
+			warn("AddIcons: unsupported data type for icon '" .. iconName .. "': " .. type(iconValue))
 		end
 	end
+
+	return pack
 end
 
 function IconModule.SetIconsType(iconType)
+	if type(iconType) ~= "string" or iconType == "" then
+		return false
+	end
 	IconModule.IconsType = iconType
+	return true
 end
 
-function IconModule.Init(New, IconThemeTag)
-	IconModule.New = New
-	IconModule.IconThemeTag = IconThemeTag
-
+function IconModule.Init(newFunction, iconThemeTag)
+	if newFunction ~= nil and type(newFunction) ~= "function" then
+		error("Init: newFunction must be a function or nil", 2)
+	end
+	IconModule.New = newFunction
+	IconModule.IconThemeTag = iconThemeTag
 	return IconModule
 end
 
-function IconModule.Icon(Icon, Type, DefaultFormat)
-	DefaultFormat = DefaultFormat ~= false
-	local iconType, iconName = parseIconString(Icon)
-
-	local targetType = iconType or Type or IconModule.IconsType
-	local targetName = iconName
-
-	local iconSet = IconModule.Icons[targetType]
-
-	if iconSet and iconSet.Icons and iconSet.Icons[targetName] then
-		return {
-			iconSet.Spritesheets[tostring(iconSet.Icons[targetName].Image)],
-			iconSet.Icons[targetName],
-		}
-	elseif iconSet and iconSet[targetName] and string.find(iconSet[targetName], "rbxassetid://") then
-		return DefaultFormat
-				and {
-					iconSet[targetName],
-					{ ImageRectSize = Vector2.new(0, 0), ImageRectPosition = Vector2.new(0, 0) },
-				}
-			or iconSet[targetName]
+function IconModule.Icon(icon, iconType, defaultFormat)
+	local parsedType, iconName = parseIconString(icon)
+	if not iconName then
+		return nil
 	end
+
+	local targetType = parsedType or iconType or IconModule.IconsType
+	local pack = getPack(targetType)
+	if type(pack) ~= "table" then
+		return nil
+	end
+
+	if type(pack.Icons) == "table" then
+		local iconData = pack.Icons[iconName]
+		if type(iconData) == "table" and iconData.Image then
+			local imageId = iconData.Image
+			local sheet = pack.Spritesheets and pack.Spritesheets[tostring(imageId)] or imageId
+			local result = { sheet, iconData }
+			return defaultFormat == false and imageId or result
+		end
+	end
+
+	local directImage = pack[iconName]
+	if type(directImage) == "string" and directImage:find("rbxassetid://", 1, true) then
+		if defaultFormat == false then
+			return directImage
+		end
+		return {
+			directImage,
+			{
+				ImageRectSize = Vector2.new(0, 0),
+				ImageRectPosition = Vector2.new(0, 0),
+			},
+		}
+	end
+
 	return nil
 end
 
-function IconModule.GetIcon(Icon, Type)
-	return IconModule.Icon(Icon, Type, false)
+function IconModule.GetIcon(icon, iconType)
+	return IconModule.Icon(icon, iconType, false)
 end
 
-function IconModule.Icon2(Icon, Type, DefaultFormat)
-	return IconModule.Icon(Icon, Type, true)
+function IconModule.Icon2(icon, iconType, defaultFormat)
+	return IconModule.Icon(icon, iconType, defaultFormat)
 end
 
-function IconModule.Image(IconConfig)
-	local Icon = {
-		Icon = IconConfig.Icon or nil,
-		Type = IconConfig.Type,
-		Colors = IconConfig.Colors or { (IconModule.IconThemeTag or Color3.new(1, 1, 1)), Color3.new(1, 1, 1) },
-		Size = IconConfig.Size or UDim2.new(0, 24, 0, 24),
+function IconModule.Image(config)
+	if type(config) ~= "table" then
+		error("Image: icon configuration must be a table", 2)
+	end
 
-		IconFrame = nil,
+	local iconData = IconModule.Icon(config.Icon, config.Type, true)
+	if not iconData then
+		return nil
+	end
+
+	local colors = type(config.Colors) == "table" and config.Colors
+		or { IconModule.IconThemeTag or Color3.new(1, 1, 1), Color3.new(1, 1, 1) }
+	local transparency = type(config.Transparency) == "table" and config.Transparency or { 0, 0 }
+	local isAssetId = type(iconData) == "string"
+	local iconInfo = not isAssetId and iconData[2] or nil
+
+	local primaryColor = colors[1]
+	local primaryTransparency = transparency[1]
+	local properties = {
+		Size = config.Size or UDim2.new(0, 24, 0, 24),
+		BackgroundTransparency = 1,
+		Image = isAssetId and iconData or iconData[1],
+		ImageColor3 = typeof(primaryColor) == "Color3" and primaryColor or nil,
+		ImageTransparency = type(primaryTransparency) == "number" and math.clamp(primaryTransparency, 0, 1) or nil,
 	}
 
-	local Colors = {}
-
-	for _, color in next, Icon.Colors do
-		Colors[_] = {
-			ThemeTag = typeof(color) == "string" and color,
-			Color = typeof(color) == "Color3" and color,
+	if iconInfo then
+		properties.ImageRectSize = iconInfo.ImageRectSize
+		properties.ImageRectOffset = iconInfo.ImageRectPosition
+	end
+	if type(primaryColor) == "string" or type(primaryTransparency) == "string" then
+		properties.ThemeTag = {
+			ImageColor3 = type(primaryColor) == "string" and primaryColor or nil,
+			ImageTransparency = type(primaryTransparency) == "string" and primaryTransparency or nil,
 		}
 	end
 
-	local IconLabel = IconModule.Icon2(Icon.Icon, Icon.Type)
-	local isrbxassetid = typeof(IconLabel) == "string" and string.find(IconLabel, "rbxassetid://")
-
+	local frame
 	if IconModule.New then
-		local New = IconModule.New
-
-		local IconFrame = New("ImageLabel", {
-			Size = Icon.Size,
-			BackgroundTransparency = 1,
-			ImageColor3 = Colors[1].Color or nil,
-			ThemeTag = Colors[1].ThemeTag and {
-				ImageColor3 = Colors[1].ThemeTag,
-			},
-			Image = isrbxassetid and IconLabel or IconLabel[1],
-			ImageRectSize = isrbxassetid and nil or IconLabel[2].ImageRectSize,
-			ImageRectOffset = isrbxassetid and nil or IconLabel[2].ImageRectPosition,
-		})
-
-		if not isrbxassetid and IconLabel[2].Parts then
-			for _, part in next, IconLabel[2].Parts do
-				local IconPartLabel = IconModule.Icon(part, Icon.Type)
-
-				local IconPart = New("ImageLabel", {
-					Size = UDim2.new(1, 0, 1, 0),
-					BackgroundTransparency = 1,
-					ImageColor3 = Colors[1 + _].Color or nil,
-					ThemeTag = Colors[1 + _].ThemeTag and {
-						ImageColor3 = Colors[1 + _].ThemeTag,
-					},
-					Image = IconPartLabel[1],
-					ImageRectSize = IconPartLabel[2].ImageRectSize,
-					ImageRectOffset = IconPartLabel[2].ImageRectPosition,
-					Parent = IconFrame,
-				})
-			end
-		end
-
-		Icon.IconFrame = IconFrame
+		frame = IconModule.New("ImageLabel", properties)
 	else
-		local IconFrame = Instance.new("ImageLabel")
-		IconFrame.Size = Icon.Size
-		IconFrame.BackgroundTransparency = 1
-		IconFrame.ImageColor3 = Colors[1].Color
-		IconFrame.Image = isrbxassetid and IconLabel or IconLabel[1]
-		IconFrame.ImageRectSize = isrbxassetid and nil or IconLabel[2].ImageRectSize
-		IconFrame.ImageRectOffset = isrbxassetid and nil or IconLabel[2].ImageRectPosition
-
-		if not isrbxassetid and IconLabel[2].Parts then
-			for _, part in next, IconLabel[2].Parts do
-				local IconPartLabel = IconModule.Icon(part, Icon.Type)
-
-				local IconPart = Instance.New("ImageLabel")
-				IconPart.Size = UDim2.new(1, 0, 1, 0)
-				IconPart.BackgroundTransparency = 1
-				IconPart.ImageColor3 = Colors[1 + _].Color
-				IconPart.Image = IconPartLabel[1]
-				IconPart.ImageRectSize = IconPartLabel[2].ImageRectSize
-				IconPart.ImageRectOffset = IconPartLabel[2].ImageRectPosition
-				IconPart.Parent = IconFrame
+		frame = Instance.new("ImageLabel")
+		for property, value in pairs(properties) do
+			if value ~= nil then
+				frame[property] = value
 			end
 		end
-
-		Icon.IconFrame = IconFrame
 	end
 
-	return Icon
+	if iconInfo and type(iconInfo.Parts) == "table" then
+		for index, part in ipairs(iconInfo.Parts) do
+			local partData = IconModule.Icon(part, config.Type, true)
+			if partData then
+				local partInfo = type(partData) == "table" and partData[2] or nil
+				local partColor = colors[index + 1]
+				local partTransparency = transparency[index + 1]
+				local partProperties = {
+					Size = UDim2.new(1, 0, 1, 0),
+					BackgroundTransparency = 1,
+					Image = type(partData) == "string" and partData or partData[1],
+					ImageColor3 = typeof(partColor) == "Color3" and partColor or nil,
+					ImageTransparency = type(partTransparency) == "number" and math.clamp(partTransparency, 0, 1) or nil,
+				}
+				if partInfo then
+					partProperties.ImageRectSize = partInfo.ImageRectSize
+					partProperties.ImageRectOffset = partInfo.ImageRectPosition
+				end
+				if type(partColor) == "string" or type(partTransparency) == "string" then
+					partProperties.ThemeTag = {
+						ImageColor3 = type(partColor) == "string" and partColor or nil,
+						ImageTransparency = type(partTransparency) == "string" and partTransparency or nil,
+					}
+				end
+
+				if IconModule.New then
+					partProperties.Parent = frame
+					IconModule.New("ImageLabel", partProperties)
+				else
+					local partFrame = Instance.new("ImageLabel")
+					for property, value in pairs(partProperties) do
+						if value ~= nil then
+							partFrame[property] = value
+						end
+					end
+					partFrame.Parent = frame
+				end
+			end
+		end
+	end
+
+	return {
+		Icon = config.Icon,
+		Type = config.Type,
+		Colors = colors,
+		Transparency = transparency,
+		Size = config.Size or UDim2.new(0, 24, 0, 24),
+		IconFrame = frame,
+	}
 end
 
 return IconModule

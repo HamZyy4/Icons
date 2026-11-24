@@ -1,96 +1,22 @@
-# Icons
+# ForktUI Icons
 
-## Use Icons in your project!
+The companion icon-data repository for [ForktUI](https://github.com/HamZyy4/ForktUI). Keep the existing icon asset directories and their license/credit files when applying updates.
 
-### Get "rbxassetid://..."
-
-```lua
--- Load icons
-local IconsV2 = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/Footagesus/Icons/main/Main-v2.lua"))()
-
--- optional. Set Icons Type (default is lucide)
-IconsV2.SetIconsType("lucide") -- lucide, craft and more...
-
--- Use Icons
-local HouseIcon = IconsV2.GetIcon("house") -- default is lucide
-
-local ImageLabel = Instance.new("ImageLabel")
-ImageLabel.Image = HouseIcon
-
-local SFSymbolsHouseFill = IconsV2.GetIcon("sfsymbols:HouseFill") -- get sf-symbol icon
-
-local ImageLabel2 = Instance.new("ImageLabel")
-ImageLabel2.Image = SFSymbolsHouseFill
-ImageLabel2.ImageColor3 = Color3.fromHex("#30ff6a") -- set color
-```
-
-### Version 2 (Beta)
-
-#### With `Image()` function
+## Load
 
 ```lua
--- Load Icons
-local Icons = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/Footagesus/Icons/main/Main-v2.lua"))()
+local Icons = loadstring(game:HttpGet(
+    "https://raw.githubusercontent.com/HamZyy4/Icons/main/Main-v2.lua"
+))()
 
-local PrimaryColor = Color3.fromHex("#ffffff")
-local SecondaryColor = Color3.fromHex("#315dff")
-
-
--- Change default icon set
-Icons.SetIconsType("geist")
-
-
--- Create simple icon
-local houseIcon = Icons.Image({
-    Icon = "accessibility-unread", -- Default Geist icon
-    Colors = { PrimaryColor, SecondaryColor }
-    Size = UDim2.new(0, 32, 0, 32)
-})
-
+Icons.SetIconsType("lucide")
+local iconAsset = Icons.GetIcon("house")
 ```
 
-#### With WindUI `Creator` module (Themes support)
+Available icon packs include Lucide, Solar, Craft, Geist, SF Symbols, and Gravity UI.
 
-```lua
--- Load Icons
-local Icons = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/Footagesus/Icons/main/Main-v2.lua"))()
+## ForktUI integration
 
--- WindUI 'Creator' module
-local WindUI = loadstring(game:HttpGet(--[[Paste WindUI Library]]))()
-local New = WindUI.Creator.New
+ForktUI expects the icon repository as a submodule at `src/Icons` and loads `Main-v2` from that local module tree. Standard Rojo deployments do not need an icon server bridge or RemoteFunction.
 
-Icons.Init(New, "Icon") -- Second arg is default 'theme tag' Color
-
-
--- Create simple icon
-local houseIcon = Icons.Image({
-    Icon = "house", -- Default is Lucide
-    -- Using default 'theme tag' color.
-    Size = UDim2.new(0, 32, 0, 32)
-})
-
--- Create multi-color icon (folder with accent)
-local folderIcon = Icons.Image({
-    -- Icon with 2 Colors
-    Icon = "geist:accessibility-unread", -- Using Geist Icon
-    Colors = {
-        "Icon", -- Primary 'theme tag' color
-        Color3.fromHex("#315dff") -- Secondary 'Color3' color
-    }, -- Theme tags or Color3 values
-
-    Size = UDim2.new(0, 28, 0, 28)
-})
-
--- Add to UI
-houseIcon.IconFrame.Parent = ScreenGui -- ... Parent to your UI
-folderIcon.IconFrame.Parent = ScreenGui -- ... Parent to your UI
-```
-
-### Available Icons (Credits)
-
-- [Lucide Icons](https://github.com/lucide-icons/lucide)
-- [Craft Icons](https://www.figma.com/community/file/1415718327120418204)
-- [Geist Icons](https://vercel.com/geist/icons)
-- [Solar Icons](https://icones.js.org/collection/solar)
-- [SF Symbols](https://sf-symbols-one.vercel.app/)
-- [Gravity UI Icons](https://gravity-ui.com/ru/icons)
+Maintainer: `sukitovone`. Original icon assets remain credited to their creators in the source project.
